@@ -27,7 +27,9 @@ def client():
             db.close()
 
     app.dependency_overrides[database.get_db] = override_get_db
-    yield TestClient(app)          # no `with`: skips the lifespan (real DB / model load)
+    with TestClient(app) as tc:
+         yield tc
+          # no `with`: skips the lifespan (real DB / model load)
     app.dependency_overrides.clear()
 
 

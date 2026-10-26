@@ -1,25 +1,38 @@
-import sys
 import os
+import sys
+from contextlib import asynccontextmanager
+
+import jwt
 from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-sys.path.append(parent_dir)
+# --- UPDATE THIS LOGIC TO CLEAR THE ERROR ---
+current_dir = os.path.dirname(os.path.abspath(__file__)) # points to backend/
+root_dir = os.path.dirname(current_dir)                 # points to ai-finance-tracker/
 
-import models, schemas, database
+sys.path.append(current_dir)   # Let's Python find sibling backend files (models, database, security)
+sys.path.append(root_dir)      # Let's Python find root directory folders (ml_logic)
+# ---------------------------------------------
+
+import models, schemas, database, security
 import ml_logic.model as ml
+from ml_logic.categories import CATEGORY_MAP
 
-models.Base.metadata.create_all(bind=database.engine)
 
-app = FastAPI()
 
-origins = [
-    "http://localhost:5173",
-    "https://ai-finance-tracker-opal.vercel.app", 
-]
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    models.Base.metadata.create_all(bind=database.engine)
+    ml.load_model()          # fail loudly at startup if the model is missing
+    yield
 
+
+app = FastAPI(title="FiscalGuard API", lifespan=lifespan)
+
+origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -28,59 +41,105 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CATEGORY_MAP = {
-    "Rent": 8,
-    "Loan_Repayment": 6,
-    "Insurance": 5,
-    "Groceries": 3,
-    "Transport": 9,
-    "Eating_Out": 0,
-    "Entertainment": 2,
-    "Utilities": 10,
-    "Healthcare": 4,
-    "Education": 1,
-    "Miscellaneous": 7
-}
+bearer = HTTPBearer(auto_error=False)
 
-@app.post("/users/", response_model=schemas.User)
-def create_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
-    db_user = models.User(
-        username=user.username, 
-        email=user.email, 
-        hashed_password=user.password 
+
+def get_current_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: Session = Depends(database.get_db),
+) -> models.User:
+    unauthorized = HTTPException(
+        status_code=401,
+        detail="Invalid or expired token",
+        headers={"WWW-Authenticate": "Bearer"},
     )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    if creds is None:
+        raise unauthorized
+    try:
+        user_id = security.decode_token(creds.credentials)
+    except Exception:
+        raise unauthorized
+    user = db.get(models.User, user_id)
+    if user is None:
+        raise unauthorized
+    return user
 
-@app.post("/users/{user_id}/expenses/", response_model=schemas.Expense)
-def create_expense_for_user(
-    user_id: int, expense: schemas.ExpenseCreate, db: Session = Depends(database.get_db)
+
+# ---------- auth ----------
+@app.post("/auth/signup", response_model=schemas.User, status_code=201)
+def signup(payload: schemas.UserCreate, db: Session = Depends(database.get_db)):
+    email = payload.email.lower()
+    taken = db.query(models.User).filter(
+        (models.User.email == email) | (models.User.username == payload.username)
+    ).first()
+    if taken:
+        raise HTTPException(409, "Username or email already registered")
+
+    user = models.User(
+        username=payload.username,
+        email=email,
+        hashed_password=security.hash_password(payload.password),
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Username or email already registered")
+    db.refresh(user)
+    return user
+
+
+@app.post("/auth/login", response_model=schemas.Token)
+def login(payload: schemas.UserLogin, db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
+    if not user or not security.verify_password(payload.password, user.hashed_password):
+        raise HTTPException(401, "Incorrect email or password")
+    return schemas.Token(access_token=security.create_access_token(user.id))
+
+
+@app.get("/me", response_model=schemas.User)
+def me(user: models.User = Depends(get_current_user)):
+    return user
+
+
+# ---------- expenses (always scoped to the logged-in user) ----------
+@app.post("/me/expenses/", response_model=schemas.Expense, status_code=201)
+def create_expense(
+    expense: schemas.ExpenseCreate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
 ):
-    cat_id = CATEGORY_MAP.get(expense.category, 7)
-
-    is_anomaly_detected = ml.predict_anomaly(expense.amount, cat_id)
+    category = expense.category.value
+    history = [
+        amount for (amount,) in db.query(models.Expense.amount).filter(
+            models.Expense.owner_id == user.id,
+            models.Expense.category == category,
+        )
+    ]
+    flagged = ml.is_anomaly(expense.amount, CATEGORY_MAP[category], history)
 
     db_expense = models.Expense(
-        **expense.model_dump(),
-        owner_id=user_id,
-        is_anomaly=is_anomaly_detected          
+        amount=expense.amount,
+        category=category,
+        description=expense.description,
+        owner_id=user.id,
+        is_anomaly=flagged,
     )
     db.add(db_expense)
     db.commit()
     db.refresh(db_expense)
     return db_expense
 
-@app.get("/users/{user_id}/expenses/", response_model=list[schemas.Expense])
-def get_expenses_for_user(
-    user_id: int, db: Session = Depends(database.get_db)
+
+@app.get("/me/expenses/", response_model=list[schemas.Expense])
+def list_expenses(
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
 ):
-    expenses = db.query(models.Expense).filter(models.Expense.owner_id == user_id).all()
-    
-    if not expenses:
-        # Returning an empty list if no expenses are found than an error 
-        # so the frontend can still display a "No Transactions" message.
-        return []
-        
-    return expenses
+    return (
+        db.query(models.Expense)
+        .filter(models.Expense.owner_id == user.id)
+        .order_by(models.Expense.id)
+        .all()
+    )

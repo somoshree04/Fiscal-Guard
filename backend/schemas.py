@@ -1,34 +1,59 @@
-from pydantic import BaseModel,EmailStr
-from typing import List, Optional
 from datetime import datetime
-
-class ExpenseBase(BaseModel):
-    amount:float
-    category:str
-    description:str
-
-class ExpenseCreate(ExpenseBase):
-
-    pass #frontend sees while creating a new expense
-
-class Expense(ExpenseBase):
-    id:int
-    owner_id:int
-    is_anomaly:bool
-    timestamp:datetime
-class Config:
-    from_attributes=True
+from enum import Enum
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
-class UserBase(BaseModel):
-    username:str
-    email:EmailStr
+class Category(str, Enum):
+    Eating_Out = "Eating_Out"
+    Education = "Education"
+    Entertainment = "Entertainment"
+    Groceries = "Groceries"
+    Healthcare = "Healthcare"
+    Insurance = "Insurance"
+    Loan_Repayment = "Loan_Repayment"
+    Miscellaneous = "Miscellaneous"
+    Rent = "Rent"
+    Transport = "Transport"
+    Utilities = "Utilities"
 
-class UserCreate(UserBase):
-    password:str
 
-class User(UserBase):
-    id:int
-    expenses:List[Expense]=[]
-class Config:
-    from_attributes=True
+class ExpenseCreate(BaseModel):
+    amount: float = Field(gt=0, lt=10_000_000, allow_inf_nan=False)
+    category: Category
+    description: str = Field(default="", max_length=200)
+
+
+class Expense(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    owner_id: int
+    amount: float
+    category: str                 # str (not Category) so old rows like "Food" still load
+    description: str | None = None
+    is_anomaly: bool
+    timestamp: datetime | None = None
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=30)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=72)   # bcrypt's limit
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class User(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    email: EmailStr
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"

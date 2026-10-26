@@ -1,7 +1,6 @@
-from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
-
+from datetime import datetime, timezone
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 class Category(str, Enum):
     Eating_Out = "Eating_Out"
@@ -29,10 +28,17 @@ class Expense(BaseModel):
     id: int
     owner_id: int
     amount: float
-    category: str                 # str (not Category) so old rows like "Food" still load
+    category: str
     description: str | None = None
     is_anomaly: bool
     timestamp: datetime | None = None
+
+    @field_validator("timestamp")
+    @classmethod
+    def assume_utc(cls, v):
+        if v is not None and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
 
 class UserCreate(BaseModel):

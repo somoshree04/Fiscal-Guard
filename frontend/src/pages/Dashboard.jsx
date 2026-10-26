@@ -1,9 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { api, clearToken } from '../api'; // Centralized network client abstraction layer
 
-const Dashboard = () => {
+// FULL CONTEXT MAP MATRIX LINKED TO BACKEND SPECIFICATIONS
+const CATEGORIES = [
+  'Eating_Out',
+  'Groceries',
+  'Rent',
+  'Transport',
+  'Entertainment',
+  'Healthcare',
+  'Utilities',
+  'Insurance',
+  'Loan_Repayment',
+  'Education',
+  'Miscellaneous'
+];
+
+export const Dashboard = () => {
   const navigate = useNavigate();
 
   // --- COMPONENT STATES ---
@@ -23,10 +38,24 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    fetchHistory();
+    let ignore = false;
+
+    const loadHistory = async () => {
+      try {
+        const history = await api('/me/expenses/');
+        if (!ignore) setExpenses(history);
+      } catch (err) {
+        if (!ignore) setError(err.message);
+      }
+    };
+
+    loadHistory();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
-  // --- ADD EXPENSE HANDLER ---
+  // --- ADD EXPENSE HANDLER (Analyzes via the left button form) ---
   const handleAddExpense = async (e) => {
     e.preventDefault();
     setError('');
@@ -49,29 +78,32 @@ const Dashboard = () => {
     navigate('/');
   };
 
-  // --- MATH & GRAPH LOGIC ---
-  const today = new Date().toISOString().split('T')[0];
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  // --- DELETE TRANSACTION HANDLER ---
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this expense?')) return;
+    try {
+      await api(`/me/expenses/${id}`, { method: 'DELETE' });
+      fetchHistory();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
-  const dailyTotal = expenses
-    .filter(item => item.timestamp && item.timestamp.startsWith(today))
-    .reduce((sum, item) => sum + item.amount, 0);
+  // Timezone normalization utils (en-CA formats as YYYY-MM-DD in the user's LOCAL timezone)
+  const localDay = (iso) => new Date(iso).toLocaleDateString('en-CA');
+  const todayKey = new Date().toLocaleDateString('en-CA');
+  const monthKey = todayKey.slice(0, 7);
 
-  const monthlyTotal = expenses
-    .filter(item => item.timestamp && item.timestamp.startsWith(currentMonth))
-    .reduce((sum, item) => sum + item.amount, 0);
+  const todaysExpenses = expenses.filter(e => e.timestamp && localDay(e.timestamp) === todayKey);
+  const monthExpenses  = expenses.filter(e => e.timestamp && localDay(e.timestamp).startsWith(monthKey));
+
+  const dailyTotal   = todaysExpenses.reduce((s, e) => s + e.amount, 0);
+  const monthlyTotal = monthExpenses.reduce((s, e) => s + e.amount, 0);
 
   const chartData = Object.values(
-    expenses.reduce((acc, item) => {
-      let unifiedCategory = item.category;
-      if (item.category === "Food" || item.category === "FOOD") {
-        unifiedCategory = "Eating_Out";
-      }
-
-      if (!acc[unifiedCategory]) {
-        acc[unifiedCategory] = { name: unifiedCategory, value: 0 };
-      }
-      acc[unifiedCategory].value += item.amount;
+    monthExpenses.reduce((acc, item) => {
+      acc[item.category] ??= { name: item.category.replace('_', ' '), value: 0 };
+      acc[item.category].value += item.amount;
       return acc;
     }, {})
   );
@@ -90,13 +122,14 @@ const Dashboard = () => {
         </button>
       </header>
 
-      {/* DYNAMIC BACKEND/SCHEMA ERROR NOTIFICATION PROMPT */}
+      {/* DYNAMIC ERROR NOTIFICATION BOX */}
       {error && (
         <div className="mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
           {error}
         </div>
       )}
 
+      {/* METRIC CARD STATS HEADERS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 border-l-4 border-l-cyan-500">
           <p className="text-slate-400 text-xs uppercase font-bold">Today's Total</p>
@@ -109,13 +142,13 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* LEFT COLUMN PANEL: FORM CONTROL & AI MODULE STATUS */}
         <div className="space-y-8">
           <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg">
             <h2 className="text-xl mb-4 font-semibold">Log New Expense</h2>
             <form onSubmit={handleAddExpense} className="space-y-4">
               <div className="space-y-2">
                 <label className="text-xs text-slate-400 uppercase font-bold ml-1">Amount</label>
-                {/* UPGRADED: Forced step bounds validation constraints to guard data decimals */}
                 <input 
                   type="number" 
                   step="0.01"
@@ -134,18 +167,11 @@ const Dashboard = () => {
                   onChange={(e) => setCategory(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500 text-white"
                 >
-                  {/* FULL CONTEXT MAP MATRIX LINKED TO BACKEND SPECIFICATIONS */}
-                  <option value="Eating_Out">Eating Out</option>
-                  <option value="Education">Education</option>
-                  <option value="Entertainment">Entertainment</option>
-                  <option value="Groceries">Groceries</option>
-                  <option value="Healthcare">Healthcare</option>
-                  <option value="Insurance">Insurance</option>
-                  <option value="Loan_Repayment">Loan Repayment</option>
-                  <option value="Miscellaneous">Miscellaneous</option>
-                  <option value="Rent">Rent</option>
-                  <option value="Transport">Transport</option>
-                  <option value="Utilities">Utilities</option>
+                  {CATEGORIES.map(c => (
+                    <option key={c} value={c}>
+                      {c.replace('_', ' ')}
+                    </option>
+                  ))}
                 </select>
               </div>
               <button className="w-full bg-cyan-600 py-3 rounded-xl font-bold hover:bg-cyan-500 shadow-lg shadow-cyan-900/20 transition-all transform active:scale-95">
@@ -176,40 +202,73 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg min-h-[400px] md:col-span-2 flex flex-col">
-          <h2 className="text-xl mb-4 font-semibold text-cyan-400 text-center">Category Breakdown</h2>
-          {expenses.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-slate-500 italic">No data to chart</div>
-          ) : (
-            <div className="flex-1 min-h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px' }}
-                    itemStyle={{ color: '#fff' }}
-                  />
-                  <Legend verticalAlign="bottom" height={48} iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                </PieChart>
-              </ResponsiveContainer>
+        {/* RIGHT COLUMN PANEL: ANALYTICS VISUALIZATION & TRANSACTION LOG TABLE */}
+        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg md:col-span-2 flex flex-col justify-between min-h-130">
+          <div className="mb-4">
+            <h2 className="text-xl mb-4 font-semibold text-cyan-400 text-center">Category Breakdown (This Month)</h2>
+            {chartData.length === 0 ? (
+              <div className="h-60 flex items-center justify-center text-slate-500 italic">No spending this month</div>
+            ) : (
+              <div className="h-60">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={chartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#fff' }}
+                      formatter={(value) => `₹${value.toLocaleString()}`}
+                    />
+                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* DYNAMIC SCROLLABLE LIST SHOWING INDIVIDUAL DELETIONS */}
+          <div className="mt-4 pt-4 border-t border-slate-800/80 flex-1 flex flex-col">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Transaction History</h3>
+            <div className="overflow-y-auto space-y-2 pr-1 max-h-42.5 min-h-30">
+              {expenses.length === 0 ? (
+                <p className="text-xs text-slate-500 italic text-center py-6">No historical records available</p>
+              ) : (
+                expenses.map((exp) => (
+                  <div key={exp.id} className="flex justify-between items-center bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                    <div>
+                      <p className="font-medium">{exp.description}</p>
+                      <p className="text-xs text-slate-500">{exp.category}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <p className="font-bold">₹{exp.amount.toLocaleString()}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(exp.id)}
+                        className="text-xs text-red-400 hover:text-red-300"
+                        aria-label={`Delete ${exp.description}`}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
   );
-};
+}
 
 export default Dashboard;

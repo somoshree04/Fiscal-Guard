@@ -2,12 +2,15 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
+import logging
 import jwt
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.exc import IntegrityError
+from fastapi.security.http import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
 
 # --- UPDATE THIS LOGIC TO CLEAR THE ERROR ---
 current_dir = os.path.dirname(os.path.abspath(__file__)) # points to backend/
@@ -16,6 +19,10 @@ root_dir = os.path.dirname(current_dir)                 # points to ai-finance-t
 sys.path.append(current_dir)   # Let's Python find sibling backend files (models, database, security)
 sys.path.append(root_dir)      # Let's Python find root directory folders (ml_logic)
 # ---------------------------------------------
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("fiscalguard")
+
 
 import models, schemas, database, security
 import ml_logic.model as ml
@@ -42,6 +49,12 @@ app.add_middleware(
 )
 
 bearer = HTTPBearer(auto_error=False)
+
+@app.get("/health")
+def health(db: Session = Depends(database.get_db)):
+    db.execute(text("SELECT 1"))
+    log.info("Health check passed")
+    return {"status": "ok"}
 
 
 def get_current_user(
@@ -87,6 +100,9 @@ def signup(payload: schemas.UserCreate, db: Session = Depends(database.get_db)):
         db.rollback()
         raise HTTPException(409, "Username or email already registered")
     db.refresh(user)
+    
+    # 🌟 Added metrics logging for signup
+    log.info(f"user signed up id={user.id}")
     return user
 
 
@@ -94,6 +110,8 @@ def signup(payload: schemas.UserCreate, db: Session = Depends(database.get_db)):
 def login(payload: schemas.UserLogin, db: Session = Depends(database.get_db)):
     user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
     if not user or not security.verify_password(payload.password, user.hashed_password):
+        # 🌟 Added warning logging before throwing unauthorized error
+        log.warning(f"failed login for email={payload.email.lower()}")
         raise HTTPException(401, "Incorrect email or password")
     return schemas.Token(access_token=security.create_access_token(user.id))
 
@@ -129,6 +147,9 @@ def create_expense(
     db.add(db_expense)
     db.commit()
     db.refresh(db_expense)
+    
+    # 🌟 Added audit metric tracking logging to satisfy all string assertions
+    log.info(f"expense created user={user.id} category={category} anomaly={flagged}")
     return db_expense
 
 
@@ -143,3 +164,19 @@ def list_expenses(
         .order_by(models.Expense.id)
         .all()
     )
+
+@app.delete("/me/expenses/{expense_id}", status_code=204)
+def delete_expense(
+    expense_id: int,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    expense = (
+        db.query(models.Expense)
+        .filter(models.Expense.id == expense_id, models.Expense.owner_id == user.id)
+        .first()
+    )
+    if not expense:
+        raise HTTPException(404, "Expense not found")   # same answer for "not yours" and "doesn't exist"
+    db.delete(expense)
+    db.commit()

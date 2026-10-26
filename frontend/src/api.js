@@ -29,5 +29,7 @@ export async function api(path, { method = 'GET', body, auth = true } = {}) {
     err.status = res.status;
     throw err;
   }
+  if (res.status === 204) return null;
+  
   return res.json();
 }

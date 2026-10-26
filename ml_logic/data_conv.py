@@ -1,31 +1,18 @@
+from pathlib import Path
 import pandas as pd
-import os
+from ml_logic.categories import SPENDING_COLS, CATEGORY_MAP
 
-def prepare_data(csv_name="data.csv"):
-    base_path = os.path.dirname(os.path.dirname(__file__))
-    file_path = os.path.join(base_path, "data", csv_name)
-    
-    if not os.path.exists(file_path):
-        return f"Error: {csv_name} not found at {file_path}", None
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
-    df = pd.read_csv(file_path)
+def prepare_data(csv_name: str = "data.csv"):
+    path = DATA_DIR / csv_name
+    if not path.exists():
+        raise FileNotFoundError(f"{csv_name} not found at {path}")
 
-    spending_cols = [
-        'Rent', 'Loan_Repayment', 'Insurance', 'Groceries', 
-        'Transport', 'Eating_Out', 'Entertainment', 'Utilities', 
-        'Healthcare', 'Education', 'Miscellaneous'
-    ]
-
-    melted_df = pd.melt(
-        df, 
-        value_vars=spending_cols, 
-        var_name='category', 
-        value_name='amount'
-    )
-
-    melted_df['amount'] = melted_df['amount'].fillna(0).astype(float)
-    melted_df['category_id'] = melted_df['category'].astype('category').cat.codes
-    
-    mapping = dict(enumerate(melted_df['category'].astype('category').cat.categories))
-    
-    return melted_df[['amount', 'category_id']], mapping
+    df = pd.read_csv(path)
+    long_df = pd.melt(df, value_vars=SPENDING_COLS, var_name="category", value_name="amount")
+    long_df["amount"] = pd.to_numeric(long_df["amount"], errors="coerce")
+    long_df = long_df.dropna(subset=["amount"])
+    long_df = long_df[long_df["amount"] > 0]            # zeros are "didn't spend", not data
+    long_df["category_id"] = long_df["category"].map(CATEGORY_MAP)
+    return long_df[["amount", "category_id"]].reset_index(drop=True), CATEGORY_MAP

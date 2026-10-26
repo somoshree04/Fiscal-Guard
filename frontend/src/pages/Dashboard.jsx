@@ -1,31 +1,27 @@
-
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // 1. Ensure this is imported
+import { useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { api, clearToken } from '../api'; // Centralized network client abstraction layer
 
 const Dashboard = () => {
-  const navigate = useNavigate(); // 2. Initialize the routing hook
+  const navigate = useNavigate();
 
   // --- COMPONENT STATES ---
   const [expenses, setExpenses] = useState([]);
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Eating_Out'); 
   const [analysisResult, setAnalysisResult] = useState(null);
-
-  const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const [error, setError] = useState(''); // Handles field and interceptor state errors
 
   // --- FETCH API HISTORY ---
   const fetchHistory = async () => {
     try {
-      const response = await fetch(`${baseURL}/users/1/expenses/`);
-      if (response.ok) {
-        const data = await response.json();
-        setExpenses(data);
-      }
-    } catch (error) {
-      console.error("Error fetching history:", error);
+      setExpenses(await api('/me/expenses/'));
+    } catch (err) {
+      setError(err.message);
     }
   };
+
   useEffect(() => {
     fetchHistory();
   }, []);
@@ -33,46 +29,30 @@ const Dashboard = () => {
   // --- ADD EXPENSE HANDLER ---
   const handleAddExpense = async (e) => {
     e.preventDefault();
-    const apiUrl = `${baseURL}/users/1/expenses/`;
-
-    const expenseData = {
-      amount: parseFloat(amount),
-      category: category,
-      description: "Manual entry"
-    };
-
+    setError('');
     try {
-      const response = await fetch(apiUrl, {
+      const result = await api('/me/expenses/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(expenseData),
+        body: { amount: parseFloat(amount), category, description: 'Manual entry' },
       });
-
-      if (response.ok) {
-        const result = await response.json();
-        setAnalysisResult(result);
-        setAmount('');
-        fetchHistory(); 
-      }
-    } catch (error) {
-      console.error("Error logging expense:", error);
+      setAnalysisResult(result);
+      setAmount('');
+      fetchHistory();
+    } catch (err) {
+      setError(err.message);
     }
   };
 
-  // --- HANDLED LOGOUT NAVIGATION ROUTINE ---
+  // --- LOGOUT ROUTINE ---
   const handleLogout = () => {
-    setExpenses([]);
-    setAmount('');
-    setAnalysisResult(null);
-    localStorage.removeItem('token'); 
-    navigate('/'); // Smooth redirection back to the real home landing page
+    clearToken();
+    navigate('/');
   };
 
-  // --- MATH LOGIC ---
+  // --- MATH & GRAPH LOGIC ---
   const today = new Date().toISOString().split('T')[0];
   const currentMonth = new Date().toISOString().slice(0, 7);
 
-  // Added safe check (item.timestamp && ...) to prevent crashes on null dates
   const dailyTotal = expenses
     .filter(item => item.timestamp && item.timestamp.startsWith(today))
     .reduce((sum, item) => sum + item.amount, 0);
@@ -81,11 +61,8 @@ const Dashboard = () => {
     .filter(item => item.timestamp && item.timestamp.startsWith(currentMonth))
     .reduce((sum, item) => sum + item.amount, 0);
 
-  // Added safe check here as well to fix the white screen crash
-  const todaysExpenses = expenses.filter(item => item.timestamp && item.timestamp.startsWith(today));
-
   const chartData = Object.values(
-    todaysExpenses.reduce((acc, item) => {
+    expenses.reduce((acc, item) => {
       let unifiedCategory = item.category;
       if (item.category === "Food" || item.category === "FOOD") {
         unifiedCategory = "Eating_Out";
@@ -99,15 +76,12 @@ const Dashboard = () => {
     }, {})
   );
 
-  const COLORS = ['#22d3ee', '#818cf8', '#f472b6', '#fbbf24', '#34d399', '#f87171'];
-
-  
+  const COLORS = ['#22d3ee', '#818cf8', '#f472b6', '#fbbf24', '#34d399', '#f87171', '#a78bfa', '#f43f5e', '#10b981', '#f59e0b', '#64748b'];
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-8">
       <header className="flex justify-between items-center mb-10">
         <h1 className="text-3xl font-bold text-cyan-400">FiscalGuard Dashboard</h1>
-        {/* FIXED: Hooked up onClick event trigger */}
         <button 
           onClick={handleLogout}
           className="bg-red-500/10 text-red-400 px-4 py-2 rounded-lg border border-red-500/20 hover:bg-red-500/20 transition-colors"
@@ -115,6 +89,13 @@ const Dashboard = () => {
           Logout
         </button>
       </header>
+
+      {/* DYNAMIC BACKEND/SCHEMA ERROR NOTIFICATION PROMPT */}
+      {error && (
+        <div className="mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 border-l-4 border-l-cyan-500">
@@ -134,8 +115,11 @@ const Dashboard = () => {
             <form onSubmit={handleAddExpense} className="space-y-4">
               <div className="space-y-2">
                 <label className="text-xs text-slate-400 uppercase font-bold ml-1">Amount</label>
+                {/* UPGRADED: Forced step bounds validation constraints to guard data decimals */}
                 <input 
                   type="number" 
+                  step="0.01"
+                  min="0.01"
                   placeholder="₹ 0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
@@ -150,12 +134,18 @@ const Dashboard = () => {
                   onChange={(e) => setCategory(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500 text-white"
                 >
+                  {/* FULL CONTEXT MAP MATRIX LINKED TO BACKEND SPECIFICATIONS */}
                   <option value="Eating_Out">Eating Out</option>
-                  <option value="Groceries">Groceries</option>
-                  <option value="Rent">Rent</option>
+                  <option value="Education">Education</option>
                   <option value="Entertainment">Entertainment</option>
-                  <option value="Transport">Transport</option>
+                  <option value="Groceries">Groceries</option>
                   <option value="Healthcare">Healthcare</option>
+                  <option value="Insurance">Insurance</option>
+                  <option value="Loan_Repayment">Loan Repayment</option>
+                  <option value="Miscellaneous">Miscellaneous</option>
+                  <option value="Rent">Rent</option>
+                  <option value="Transport">Transport</option>
+                  <option value="Utilities">Utilities</option>
                 </select>
               </div>
               <button className="w-full bg-cyan-600 py-3 rounded-xl font-bold hover:bg-cyan-500 shadow-lg shadow-cyan-900/20 transition-all transform active:scale-95">
@@ -178,66 +168,45 @@ const Dashboard = () => {
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed">
                   {analysisResult.is_anomaly 
-                    ? "🚨 This expense is statistically higher than your average for this category."
-                    : "✅ This entry aligns with your historical spending patterns."}
+                    ? "🚨 This looks unusually high for this category."
+                    : "✅ This looks consistent with typical spending."}
                 </p>
               </div>
             )}
           </div>
         </div>
 
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg min-h-[400px]">
+        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg min-h-[400px] md:col-span-2 flex flex-col">
           <h2 className="text-xl mb-4 font-semibold text-cyan-400 text-center">Category Breakdown</h2>
           {expenses.length === 0 ? (
-             <div className="h-full flex items-center justify-center text-slate-500 italic">No data to chart</div>
+            <div className="flex-1 flex items-center justify-center text-slate-500 italic">No data to chart</div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={85}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }}
-                  itemStyle={{ color: '#fff' }}
-                />
-                <Legend iconType="circle" />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="flex-1 min-h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px' }}
+                    itemStyle={{ color: '#fff' }}
+                  />
+                  <Legend verticalAlign="bottom" height={48} iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
-
-        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg">
-          <h2 className="text-xl mb-4 font-semibold text-slate-400">Transaction History</h2>
-          <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-            {expenses.length === 0 ? (
-              <p className="text-slate-500 italic text-center py-10">Your history is currently empty.</p>
-            ) : (
-              expenses.slice().reverse().map((exp) => (
-                <div key={exp.id} className="flex justify-between items-center bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 hover:bg-slate-800 transition-colors">
-                  <div>
-                    <div className="font-bold text-lg text-white">₹{exp.amount.toLocaleString()}</div>
-                    <div className="text-[10px] text-cyan-500 font-bold uppercase tracking-widest">{exp.category}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] text-slate-500">{new Date(exp.timestamp).toLocaleDateString()}</div>
-                    {exp.is_anomaly && <div className="text-[9px] text-red-400 font-bold">ML FLAGGED</div>}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
       </div>
     </div>
   );

@@ -1,37 +1,28 @@
-
-
-version: '3.8'
-
 services:
-  # --- FASTAPI BACKEND SERVICE ---
   backend:
-    build: 
-      context: ./backend 
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
-      - "8000:8000"  # Exposes FastAPI to local machine & frontend
-    volumes:
-      - ./backend:/app
-      - backend_db:/app/data  # Fixed indentation alignment
+      - "8000:8000"
     environment:
-      - ENV=development
-      - PYTHONPATH=/app       # Tells Python to treat /app as a root directory
-    restart: always
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in a .env file next to this compose file}
+      DATABASE_URL: sqlite:////data/finance.db
+      CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - backend_db:/data
+    restart: unless-stopped
 
-  # --- REACT FRONTEND SERVICE ---
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000
     ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules     # Prevents local node_modules from overriding container installation
-    environment:
-      - VITE_API_URL=http://localhost:8000
+      - "5173:80"
     depends_on:
       - backend
-    restart: always
+    restart: unless-stopped
 
 volumes:
   backend_db:

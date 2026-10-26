@@ -1,17 +1,32 @@
-import React ,{useState}from 'react';
-import { Link } from 'react-router-dom';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { api, setToken } from '../api';
 
 function Login() {
-    const navigate = useNavigate();
-    const [email,setEmail]=useState(' ');
-    const [password, setPassword]=useState(' ');
+  const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-    const handleLogin=(e)=>{
-        e.preventDefault();
-        console.log("captured",{ email, password });
-        navigate('/Dashboard');
-    };
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const { access_token } = await api('/auth/login', {
+        method: 'POST',
+        body: { email, password },
+        auth: false,
+      });
+      setToken(access_token);
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       
@@ -25,6 +40,11 @@ function Login() {
 
         {/* The Form - (Practice putting items on top of each other) */}
         <form onSubmit={handleLogin} className="space-y-6">
+          {error && (
+            <p role="alert" className="text-sm text-red-400">
+              {error}
+            </p>
+          )}
           
           {/* Email Field */}
           <div>
@@ -53,9 +73,10 @@ function Login() {
           {/* Submit Button */}
           <button 
             type="submit" 
+            disabled={loading}
             className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-cyan-900/20 transition-all active:scale-95"
           >
-            Sign In
+            {loading ? 'Signing In...' : 'Sign In'}
           </button>
 
         </form>

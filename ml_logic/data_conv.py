@@ -1,6 +1,8 @@
 from pathlib import Path
+
 import pandas as pd
-from ml_logic.categories import SPENDING_COLS, CATEGORY_MAP
+
+from ml_logic.categories import CATEGORY_MAP, SPENDING_COLS
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 

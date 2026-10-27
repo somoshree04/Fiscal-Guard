@@ -25,6 +25,33 @@ jobs:
         run: pytest -v
         working-directory: backend
 
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fiscal
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: fiscalguard
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fiscal"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://fiscal:ci-password@localhost:5432/fiscalguard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r backend/requirements.txt
+      - run: alembic upgrade head
+        working-directory: backend
+      - run: alembic check
+        working-directory: backend
+
   frontend:
     runs-on: ubuntu-latest
     steps:

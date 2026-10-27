@@ -3,7 +3,6 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-import jwt
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.http import HTTPAuthorizationCredentials, HTTPBearer
@@ -34,7 +33,6 @@ import security
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    models.Base.metadata.create_all(bind=database.engine)
     ml.load_model()          # fail loudly at startup if the model is missing
     yield
 

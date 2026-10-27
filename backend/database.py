@@ -5,6 +5,15 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 DEFAULT_URL = f"sqlite:///{Path(__file__).resolve().parent / 'finance.db'}"
+
+def _normalize(url: str) -> str:
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
 DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_URL)
 IS_SQLITE = DATABASE_URL.startswith("sqlite")
 

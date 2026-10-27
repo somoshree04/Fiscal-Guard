@@ -1,7 +1,6 @@
 import logging
+
 from backend.tests.conftest import signup_and_login
-from sqlalchemy import text
-from conftest import signup_and_login
 
 
 def test_signup_does_not_store_plain_password(client):

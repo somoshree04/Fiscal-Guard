@@ -1,4 +1,5 @@
 import os
+
 os.environ.setdefault("SECRET_KEY", "test-secret-key-test-secret-key-1234567890")
 
 import pytest
@@ -7,7 +8,8 @@ from sqlalchemy import create_engine  # type: ignore[reportMissingImports]
 from sqlalchemy.orm import sessionmaker  # type: ignore[reportMissingImports]
 from sqlalchemy.pool import StaticPool  # type: ignore[reportMissingImports]
 
-import database, models
+import database
+import models
 from main import app
 
 

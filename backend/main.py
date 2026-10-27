@@ -1,16 +1,15 @@
+import logging
 import os
 import sys
 from contextlib import asynccontextmanager
 
-import logging
 import jwt
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security.http import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
+from fastapi.security.http import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-
+from sqlalchemy.orm import Session
 
 # --- UPDATE THIS LOGIC TO CLEAR THE ERROR ---
 current_dir = os.path.dirname(os.path.abspath(__file__)) # points to backend/
@@ -24,10 +23,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("fiscalguard")
 
 
-import models, schemas, database, security
 import ml_logic.model as ml
 from ml_logic.categories import CATEGORY_MAP
 
+import database
+import models
+import schemas
+import security
 
 
 @asynccontextmanager
@@ -70,7 +72,7 @@ def get_current_user(
         raise unauthorized
     try:
         user_id = security.decode_token(creds.credentials)
-    except Exception:
+    except jwt.PyJWTError:
         raise unauthorized
     user = db.get(models.User, user_id)
     if user is None:

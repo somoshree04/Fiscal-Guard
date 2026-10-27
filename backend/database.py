@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
+
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 DEFAULT_URL = f"sqlite:///{Path(__file__).resolve().parent / 'finance.db'}"
 DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_URL)

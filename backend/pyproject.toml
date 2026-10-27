@@ -1,0 +1,4 @@
+
+[tool.ruff.lint]
+# Ignore B008 (function call in argument default) because FastAPI relies on it
+ignore = ["B008"]

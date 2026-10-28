@@ -49,8 +49,8 @@ export const Dashboard = () => {
       });
       if (filterCategory) params.set('category', filterCategory);
       const data = await api(`/me/expenses/?${params}`);
-      setExpenses(data.items);
-      setTotal(data.total);
+      setExpenses(data.items ?? []);
+      setTotal(data.total ?? 0);
     } catch (err) {
       setError(err.message);
     }

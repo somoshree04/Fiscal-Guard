@@ -15,7 +15,12 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime,timezone
 from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func
+from fastapi import Request
+
+from limiter import limiter, LOGIN_LIMIT, SIGNUP_LIMIT
 
 # --- UPDATE THIS LOGIC TO CLEAR THE ERROR ---
 current_dir = os.path.dirname(os.path.abspath(__file__)) # points to backend/
@@ -45,6 +50,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="FiscalGuard API", lifespan=lifespan)
+
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    # `detail` is the key our frontend api.js already reads for error messages
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many attempts. Please wait a minute and try again."},
+        headers={"Retry-After": "60"},
+    )
 
 origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
 app.add_middleware(
@@ -96,7 +113,8 @@ def get_current_user(
 
 # ---------- auth ----------
 @app.post("/auth/signup", response_model=schemas.User, status_code=201)
-def signup(payload: schemas.UserCreate, db: Session = Depends(database.get_db)):
+@limiter.limit(SIGNUP_LIMIT)
+def signup(request: Request, payload: schemas.UserCreate, db: Session = Depends(database.get_db)):
     email = payload.email.lower()
     taken = db.query(models.User).filter(
         (models.User.email == email) | (models.User.username == payload.username)
@@ -123,7 +141,8 @@ def signup(payload: schemas.UserCreate, db: Session = Depends(database.get_db)):
 
 
 @app.post("/auth/login", response_model=schemas.Token)
-def login(payload: schemas.UserLogin, db: Session = Depends(database.get_db)):
+@limiter.limit(LOGIN_LIMIT)
+def login(request:Request,payload: schemas.UserLogin, db: Session = Depends(database.get_db)):
     user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
     if not user or not security.verify_password(payload.password, user.hashed_password):
         # 🌟 Added warning logging before throwing unauthorized error

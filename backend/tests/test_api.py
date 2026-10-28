@@ -1,5 +1,5 @@
 import logging
-
+from limiter import limiter
 from backend.tests.conftest import signup_and_login
 
 
@@ -145,3 +145,20 @@ def test_summary_rejects_inverted_range(client):
     h = signup_and_login(client)
     params = {"start": "2100-01-01T00:00:00Z", "end": "2000-01-01T00:00:00Z"}
     assert client.get("/me/summary", params=params, headers=h).status_code == 422
+
+
+def test_login_is_rate_limited(client):
+    client.post("/auth/signup", json={
+        "username": "rl_user", "email": "rl@example.com", "password": "password123"})
+
+    limiter.enabled = True
+    limiter.reset()
+    bad = {"email": "rl@example.com", "password": "wrong-password"}
+
+    statuses = [client.post("/auth/login", json=bad).status_code for _ in range(6)]
+    assert statuses[:5] == [401] * 5
+    assert statuses[5] == 429
+
+    r = client.post("/auth/login", json=bad)
+    assert r.status_code == 429
+    assert "Too many attempts" in r.json()["detail"]

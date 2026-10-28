@@ -12,6 +12,14 @@ import database
 import models
 from main import app
 
+from limiter import limiter
+
+@pytest.fixture(autouse=True)
+def _limiter_off():
+    limiter.enabled = False
+    limiter.reset()
+    yield
+    limiter.enabled = False
 
 @pytest.fixture()
 def client():
@@ -33,6 +41,7 @@ def client():
          yield tc
           # no `with`: skips the lifespan (real DB / model load)
     app.dependency_overrides.clear()
+
 
 
 def signup_and_login(client, name="alice", email="alice@example.com", password="password123"):

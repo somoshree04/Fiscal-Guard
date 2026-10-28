@@ -33,7 +33,7 @@ class Expense(Base):
     __table_args__ = (
     
     Index("ix_expenses_owner_category", "owner_id", "category"),
-
+    Index("ix_expenses_owner_timestamp", "owner_id", "timestamp"),
     # Ensures that a user cannot submit a 0 or negative expense value
     CheckConstraint("amount_paise > 0", name="ck_expenses_amount_positive"),
     

@@ -65,3 +65,20 @@ class User(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+class ExpensePage(BaseModel):
+    items: list[Expense]
+    total: int          # matches the filters, ignoring limit/offset
+    limit: int
+    offset: int
+
+
+class CategoryTotal(BaseModel):
+    category: str
+    total: float
+
+
+class Summary(BaseModel):
+    total: float
+    count: int
+    by_category: list[CategoryTotal]

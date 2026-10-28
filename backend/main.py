@@ -3,12 +3,19 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.http import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+from datetime import datetime,timezone
+from fastapi import FastAPI, Depends, HTTPException, Query
+from sqlalchemy import func
 
 # --- UPDATE THIS LOGIC TO CLEAR THE ERROR ---
 current_dir = os.path.dirname(os.path.abspath(__file__)) # points to backend/
@@ -42,7 +49,11 @@ app = FastAPI(title="FiscalGuard API", lifespan=lifespan)
 origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "http://localhost:5174",
+        "http://localhost:5173",
+        
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,6 +67,11 @@ def health(db: Session = Depends(database.get_db)):
     log.info("Health check passed")
     return {"status": "ok"}
 
+def _to_utc(dt: datetime) -> datetime:
+    """Naive datetimes are treated as UTC; aware ones are converted to UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(bearer),
@@ -154,17 +170,68 @@ def create_expense(
     return db_expense
 
 
-@app.get("/me/expenses/", response_model=list[schemas.Expense])
+@app.get("/me/expenses/", response_model=schemas.ExpensePage)
 def list_expenses(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    category: schemas.Category | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    anomaly_only: bool = False,
     user: models.User = Depends(get_current_user),
     db: Session = Depends(database.get_db),
 ):
-    return (
-        db.query(models.Expense)
-        .filter(models.Expense.owner_id == user.id)
-        .order_by(models.Expense.id)
+    q = db.query(models.Expense).filter(models.Expense.owner_id == user.id)
+    if category:
+        q = q.filter(models.Expense.category == category.value)
+    if start:
+        q = q.filter(models.Expense.timestamp >= _to_utc(start))
+    if end:
+        q = q.filter(models.Expense.timestamp < _to_utc(end))
+    if anomaly_only:
+        q = q.filter(models.Expense.is_anomaly.is_(True))
+
+    total = q.count()
+    items = (
+        q.order_by(models.Expense.timestamp.desc(), models.Expense.id.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+@app.get("/me/summary", response_model=schemas.Summary)
+def summary(
+    start: datetime,
+    end: datetime,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    start, end = _to_utc(start), _to_utc(end)
+    if end <= start:
+        raise HTTPException(422, "end must be after start")
+
+    rows = (
+        db.query(
+            models.Expense.category,
+            func.sum(models.Expense.amount_paise),
+            func.count(models.Expense.id),
+        )
+        .filter(
+            models.Expense.owner_id == user.id,
+            models.Expense.timestamp >= start,
+            models.Expense.timestamp < end,
+        )
+        .group_by(models.Expense.category)
+        .all()
+    )
+    return {
+        "total": sum(int(paise) for _, paise, _ in rows) / 100,
+        "count": sum(n for _, _, n in rows),
+        "by_category": [
+            {"category": cat, "total": int(paise) / 100} for cat, paise, _ in rows
+        ],
+    }
 
 @app.delete("/me/expenses/{expense_id}", status_code=204)
 def delete_expense(

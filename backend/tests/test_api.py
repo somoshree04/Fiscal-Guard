@@ -80,3 +80,15 @@ def test_create_expense_logs_metrics(client, caplog):
     assert r.status_code == 201
     assert "expense created" in caplog.text
     assert "category=Groceries" in caplog.text
+
+def test_amount_round_trips_exactly(client):
+    h = signup_and_login(client)
+    r = client.post("/me/expenses/", json={"amount": 10.55, "category": "Groceries"}, headers=h)
+    assert r.status_code == 201
+    assert r.json()["amount"] == 10.55
+
+
+def test_more_than_two_decimals_rejected(client):
+    h = signup_and_login(client)
+    r = client.post("/me/expenses/", json={"amount": 10.999, "category": "Groceries"}, headers=h)
+    assert r.status_code == 422

@@ -129,8 +129,9 @@ def create_expense(
     db: Session = Depends(database.get_db),
 ):
     category = expense.category.value
+    amount_paise = int(expense.amount * 100)     # exact: Decimal * 100 has no float error
     history = [
-        amount for (amount,) in db.query(models.Expense.amount).filter(
+        paise / 100 for (paise,) in db.query(models.Expense.amount_paise).filter(
             models.Expense.owner_id == user.id,
             models.Expense.category == category,
         )
@@ -138,7 +139,7 @@ def create_expense(
     flagged = ml.is_anomaly(expense.amount, CATEGORY_MAP[category], history)
 
     db_expense = models.Expense(
-        amount=expense.amount,
+        amount_paise=amount_paise,
         category=category,
         description=expense.description,
         owner_id=user.id,
@@ -148,7 +149,7 @@ def create_expense(
     db.commit()
     db.refresh(db_expense)
     
-    # 🌟 Added audit metric tracking logging to satisfy all string assertions
+    # Added audit metric tracking logging to satisfy all string assertions
     log.info(f"expense created user={user.id} category={category} anomaly={flagged}")
     return db_expense
 

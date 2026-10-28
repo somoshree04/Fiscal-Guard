@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
-
+from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
@@ -19,7 +19,7 @@ class Category(str, Enum):
 
 
 class ExpenseCreate(BaseModel):
-    amount: float = Field(gt=0, lt=10_000_000, allow_inf_nan=False)
+    amount: Decimal = Field(gt=0, lt=10_000_000, max_digits=10, decimal_places=2)
     category: Category
     description: str = Field(default="", max_length=200)
 

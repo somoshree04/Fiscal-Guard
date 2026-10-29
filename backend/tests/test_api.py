@@ -162,3 +162,32 @@ def test_login_is_rate_limited(client):
     r = client.post("/auth/login", json=bad)
     assert r.status_code == 429
     assert "Too many attempts" in r.json()["detail"]
+
+def test_update_expense_changes_fields(client):
+    h = signup_and_login(client)
+    e = _add(client, h, 100, "Groceries")
+    r = client.patch(f"/me/expenses/{e['id']}",
+                     json={"amount": 250.5, "description": "weekly shop"}, headers=h)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["amount"] == 250.5
+    assert body["description"] == "weekly shop"
+    assert body["category"] == "Groceries"      # untouched fields stay as they were
+
+
+def test_update_cannot_touch_other_users_expense(client):
+    h1 = signup_and_login(client, "alice", "alice@example.com")
+    h2 = signup_and_login(client, "bob", "bob@example.com")
+    e = _add(client, h1, 100, "Rent")
+    r = client.patch(f"/me/expenses/{e['id']}", json={"amount": 1}, headers=h2)
+    assert r.status_code == 404
+
+
+def test_update_rejects_bad_input(client):
+    h = signup_and_login(client)
+    e = _add(client, h, 100, "Rent")
+    url = f"/me/expenses/{e['id']}"
+    assert client.patch(url, json={}, headers=h).status_code == 422
+    assert client.patch(url, json={"amount": -5}, headers=h).status_code == 422
+    assert client.patch(url, json={"amount": None}, headers=h).status_code == 422
+    assert client.patch(url, json={"category": "Nope"}, headers=h).status_code == 422

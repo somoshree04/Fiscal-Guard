@@ -27,17 +27,31 @@ const COLORS = [
 export const Dashboard = () => {
   const navigate = useNavigate();
 
-  // --- STATE ---
+  // --- LIST / PAGINATION STATE ---
   const [expenses, setExpenses] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [filterCategory, setFilterCategory] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  // --- SUMMARY STATE (computed by the server) ---
   const [todaySummary, setTodaySummary] = useState(null);
   const [monthSummary, setMonthSummary] = useState(null);
 
+  // --- ADD FORM STATE ---
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Eating_Out');
+  const [description, setDescription] = useState('');
   const [analysisResult, setAnalysisResult] = useState(null);
+
+  // --- EDIT STATE ---
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    amount: '',
+    category: 'Eating_Out',
+    description: '',
+  });
+
   const [error, setError] = useState('');
 
   // --- DATA LOADING ---
@@ -53,6 +67,8 @@ export const Dashboard = () => {
       setTotal(data.total ?? 0);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -77,27 +93,8 @@ export const Dashboard = () => {
   };
 
   useEffect(() => {
-    let ignore = false;
-    const params = new URLSearchParams({
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
-    });
-    if (filterCategory) params.set('category', filterCategory);
-
-    api(`/me/expenses/?${params}`)
-      .then((data) => {
-        if (!ignore) {
-          setExpenses(data.items);
-          setTotal(data.total);
-        }
-      })
-      .catch((err) => {
-        if (!ignore) setError(err.message);
-      });
-
-    return () => {
-      ignore = true;
-    };
+    Promise.resolve().then(loadHistory);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, filterCategory]);
 
   useEffect(() => {
@@ -110,17 +107,22 @@ export const Dashboard = () => {
     loadSummaries();
   };
 
-  // --- HANDLERS ---
+  // --- ADD ---
   const handleAddExpense = async (e) => {
     e.preventDefault();
     setError('');
     try {
       const result = await api('/me/expenses/', {
         method: 'POST',
-        body: { amount: parseFloat(amount), category, description: 'Manual entry' },
+        body: {
+          amount: parseFloat(amount),
+          category,
+          description: description.trim() || 'Manual entry',
+        },
       });
       setAnalysisResult(result);
       setAmount('');
+      setDescription('');
       if (page !== 0) {
         setPage(0); // the page effect reloads the history
         loadSummaries();
@@ -132,11 +134,42 @@ export const Dashboard = () => {
     }
   };
 
+  // --- EDIT ---
+  const startEdit = (exp) => {
+    setEditingId(exp.id);
+    setEditForm({
+      amount: String(exp.amount),
+      category: exp.category,
+      description: exp.description || '',
+    });
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await api(`/me/expenses/${editingId}`, {
+        method: 'PATCH',
+        body: {
+          amount: parseFloat(editForm.amount),
+          category: editForm.category,
+          description: editForm.description,
+        },
+      });
+      setEditingId(null);
+      refreshAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // --- DELETE ---
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this expense?')) return;
     setError('');
     try {
       await api(`/me/expenses/${id}`, { method: 'DELETE' });
+      if (editingId === id) setEditingId(null);
       if (expenses.length === 1 && page > 0) {
         setPage(page - 1); // the page effect reloads the history
         loadSummaries();
@@ -148,12 +181,13 @@ export const Dashboard = () => {
     }
   };
 
+  // --- LOGOUT ---
   const handleLogout = () => {
     clearToken();
     navigate('/');
   };
 
-  // --- DERIVED VALUES (from server summaries) ---
+  // --- DERIVED VALUES ---
   const dailyTotal = todaySummary?.total ?? 0;
   const monthlyTotal = monthSummary?.total ?? 0;
 
@@ -221,6 +255,7 @@ export const Dashboard = () => {
                   required
                 />
               </div>
+
               <div className="space-y-2">
                 <label
                   htmlFor="category"
@@ -241,6 +276,25 @@ export const Dashboard = () => {
                   ))}
                 </select>
               </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="description"
+                  className="text-xs text-slate-400 uppercase font-bold ml-1"
+                >
+                  Description (optional)
+                </label>
+                <input
+                  id="description"
+                  type="text"
+                  maxLength={200}
+                  placeholder="e.g. Lunch with team"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500 text-white transition-all"
+                />
+              </div>
+
               <button className="w-full bg-cyan-600 py-3 rounded-xl font-bold hover:bg-cyan-500 shadow-lg shadow-cyan-900/20 transition-all transform active:scale-95">
                 Analyze with AI
               </button>
@@ -335,6 +389,7 @@ export const Dashboard = () => {
                 onChange={(e) => {
                   setFilterCategory(e.target.value);
                   setPage(0);
+                  setEditingId(null);
                 }}
                 className="bg-slate-800 border border-slate-700 p-2 rounded-lg text-sm text-white"
               >
@@ -348,40 +403,110 @@ export const Dashboard = () => {
             </div>
 
             <div className="overflow-y-auto space-y-2 pr-1 max-h-72 min-h-30">
-              {expenses.length === 0 ? (
+              {loading ? (
+                <p className="text-xs text-slate-500 italic text-center py-6">Loading…</p>
+              ) : expenses.length === 0 ? (
                 <p className="text-xs text-slate-500 italic text-center py-6">
-                  No historical records available
+                  {filterCategory
+                    ? 'No expenses in this category'
+                    : 'No expenses yet. Log your first one.'}
                 </p>
               ) : (
-                expenses.map((exp) => (
-                  <div
-                    key={exp.id}
-                    className="flex justify-between items-center bg-slate-800/50 p-3 rounded-xl border border-slate-700"
-                  >
-                    <div>
-                      <p className="font-medium">{exp.description || 'No description'}</p>
-                      <p className="text-xs text-slate-500">
-                        {exp.category.replace('_', ' ')}
-                        {exp.timestamp &&
-                          ` · ${new Date(exp.timestamp).toLocaleDateString()}`}
-                        {exp.is_anomaly && (
-                          <span className="ml-2 text-red-400 font-bold">ML FLAGGED</span>
-                        )}
-                      </p>
+                expenses.map((exp) =>
+                  editingId === exp.id ? (
+                    <form
+                      key={exp.id}
+                      onSubmit={handleSaveEdit}
+                      className="bg-slate-800/80 p-3 rounded-xl border border-cyan-500/40 space-y-2"
+                    >
+                      <div className="flex gap-2">
+                        <input
+                          aria-label="Amount"
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          required
+                          value={editForm.amount}
+                          onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                          className="w-1/3 bg-slate-900 border border-slate-700 p-2 rounded-lg text-sm text-white"
+                        />
+                        <select
+                          aria-label="Category"
+                          value={editForm.category}
+                          onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                          className="flex-1 bg-slate-900 border border-slate-700 p-2 rounded-lg text-sm text-white"
+                        >
+                          {CATEGORIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c.replace('_', ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <input
+                        aria-label="Description"
+                        type="text"
+                        maxLength={200}
+                        value={editForm.description}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, description: e.target.value })
+                        }
+                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-lg text-sm text-white"
+                      />
+                      <div className="flex justify-end gap-3 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="text-slate-400 hover:text-white"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="text-cyan-400 hover:text-cyan-300 font-bold"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div
+                      key={exp.id}
+                      className="flex justify-between items-center bg-slate-800/50 p-3 rounded-xl border border-slate-700"
+                    >
+                      <div>
+                        <p className="font-medium">{exp.description || 'No description'}</p>
+                        <p className="text-xs text-slate-500">
+                          {exp.category.replace('_', ' ')}
+                          {exp.timestamp &&
+                            ` · ${new Date(exp.timestamp).toLocaleDateString()}`}
+                          {exp.is_anomaly && (
+                            <span className="ml-2 text-red-400 font-bold">ML FLAGGED</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <p className="font-bold">₹{exp.amount.toLocaleString()}</p>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(exp)}
+                          className="text-xs text-cyan-400 hover:text-cyan-300"
+                          aria-label={`Edit ${exp.description || 'expense'}`}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(exp.id)}
+                          className="text-xs text-red-400 hover:text-red-300"
+                          aria-label={`Delete ${exp.description || 'expense'}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <p className="font-bold">₹{exp.amount.toLocaleString()}</p>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(exp.id)}
-                        className="text-xs text-red-400 hover:text-red-300"
-                        aria-label={`Delete ${exp.description || 'expense'}`}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  )
+                )
               )}
             </div>
 

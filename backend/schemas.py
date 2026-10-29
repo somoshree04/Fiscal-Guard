@@ -82,3 +82,8 @@ class Summary(BaseModel):
     total: float
     count: int
     by_category: list[CategoryTotal]
+
+class ExpenseUpdate(BaseModel):
+    amount: Decimal | None = Field(default=None, gt=0, lt=10_000_000, max_digits=10, decimal_places=2)
+    category: Category | None = None
+    description: str | None = Field(default=None, max_length=200)

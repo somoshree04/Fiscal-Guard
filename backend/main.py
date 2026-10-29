@@ -267,3 +267,55 @@ def delete_expense(
         raise HTTPException(404, "Expense not found")   # same answer for "not yours" and "doesn't exist"
     db.delete(expense)
     db.commit()
+
+@app.patch("/me/expenses/{expense_id}", response_model=schemas.Expense)
+def update_expense(
+    expense_id: int,
+    payload: schemas.ExpenseUpdate,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(database.get_db),
+):
+    expense = (
+        db.query(models.Expense)
+        .filter(models.Expense.id == expense_id, models.Expense.owner_id == user.id)
+        .first()
+    )
+    if not expense:
+        raise HTTPException(404, "Expense not found")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(422, "No fields to update")
+    for field in ("amount", "category"):
+        if field in changes and changes[field] is None:
+            raise HTTPException(422, f"{field} cannot be null")
+
+    if "amount" in changes:
+        expense.amount_paise = int(changes["amount"] * 100)
+    if "category" in changes:
+        expense.category = changes["category"].value
+    if "description" in changes:
+        expense.description = changes["description"] or ""
+
+    # Re-calculate the anomaly flag using the clean, calculated float values
+    if "amount" in changes or "category" in changes:
+        history = [
+            paise / 100
+            for (paise,) in db.query(models.Expense.amount_paise).filter(
+                models.Expense.owner_id == user.id,
+                models.Expense.category == expense.category,
+                models.Expense.id != expense.id,
+            )
+        ]
+        
+        # Pull explicitly from amount_paise converted back to standard float dollars/rupees
+        current_amount_float = float(expense.amount_paise) / 100
+        
+        expense.is_anomaly = ml.is_anomaly(
+            current_amount_float, CATEGORY_MAP[expense.category], history
+        )
+
+    db.commit()
+    db.refresh(expense)
+    log.info("expense updated id=%s user=%s fields=%s", expense.id, user.id, sorted(changes))
+    return expense

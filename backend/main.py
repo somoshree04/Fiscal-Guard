@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -98,8 +98,8 @@ def health(db: Session = Depends(database.get_db)):
 def _to_utc(dt: datetime) -> datetime:
     """Naive datetimes are treated as UTC; aware ones are converted to UTC."""
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def get_current_user(

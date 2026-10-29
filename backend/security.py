@@ -27,7 +27,7 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: int) -> str:
-    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(
+    expires = dt.datetime.now(dt.UTC) + dt.timedelta(
         minutes=ACCESS_TOKEN_MINUTES
     )
     return jwt.encode(

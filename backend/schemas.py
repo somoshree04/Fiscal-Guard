@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 
@@ -40,7 +40,7 @@ class Expense(BaseModel):
     @classmethod
     def assume_utc(cls, v):
         if v is not None and v.tzinfo is None:
-            return v.replace(tzinfo=timezone.utc)
+            return v.replace(tzinfo=UTC)
         return v
 
 

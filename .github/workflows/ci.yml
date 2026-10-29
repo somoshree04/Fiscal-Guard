@@ -16,8 +16,8 @@ jobs:
           pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 
       - name: Copy environment file
-        run: cp backend/.env.example backend/.env 
-        
+        run: cp .env.example backend/.env 
+
       - run: pytest -v
         working-directory: backend
       
@@ -57,7 +57,7 @@ jobs:
           cache: pip
       # 2. CREATE A DUMMY .ENV FILE SO DOCKER / DOTENV DOES NOT CRASH
       - name: Create .env file from example
-        run: cp .env.example .env
+        run: cp ../.env.example .env
         working-directory: backend
 
       - run: |

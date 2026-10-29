@@ -1,7 +1,6 @@
 
 import numpy as np
 import pandas as pd
-
 from ml_logic.model import fit_models, personal_flag
 
 

@@ -10,9 +10,9 @@ from sqlalchemy.pool import StaticPool  # type: ignore[reportMissingImports]
 
 import database
 import models
+from limiter import limiter
 from main import app
 
-from limiter import limiter
 
 @pytest.fixture(autouse=True)
 def _limiter_off():

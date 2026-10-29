@@ -4,23 +4,25 @@ import sys
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException
+import jwt
+from jwt.exceptions import PyJWTError
+
+
+from datetime import datetime, timezone
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security.http import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import text
+from slowapi.errors import RateLimitExceeded
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from datetime import datetime,timezone
-from fastapi import FastAPI, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
-from slowapi.errors import RateLimitExceeded
-from sqlalchemy import func
-from fastapi import Request
-
-from limiter import limiter, LOGIN_LIMIT, SIGNUP_LIMIT
+from limiter import LOGIN_LIMIT, SIGNUP_LIMIT, limiter
 
 # --- UPDATE THIS LOGIC TO CLEAR THE ERROR ---
 current_dir = os.path.dirname(os.path.abspath(__file__)) # points to backend/
@@ -103,7 +105,7 @@ def get_current_user(
         raise unauthorized
     try:
         user_id = security.decode_token(creds.credentials)
-    except jwt.PyJWTError:
+    except PyJWTError:
         raise unauthorized
     user = db.get(models.User, user_id)
     if user is None:

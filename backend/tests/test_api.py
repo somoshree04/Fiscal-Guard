@@ -1,6 +1,8 @@
 import logging
-from limiter import limiter
+
 from backend.tests.conftest import signup_and_login
+
+from limiter import limiter
 
 
 def test_signup_does_not_store_plain_password(client):

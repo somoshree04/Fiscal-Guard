@@ -264,3 +264,10 @@ def test_update_rejects_bad_input(client):
     assert client.patch(url, json={"amount": -5}, headers=h).status_code == 422
     assert client.patch(url, json={"amount": None}, headers=h).status_code == 422
     assert client.patch(url, json={"category": "Nope"}, headers=h).status_code == 422
+
+def test_personal_baseline_path_with_enough_history(client):
+    h = signup_and_login(client)
+    for _ in range(11):
+        _add(client, h, 100, "Groceries")
+    spike = _add(client, h, 5000, "Groceries")
+    assert spike["is_anomaly"] is True

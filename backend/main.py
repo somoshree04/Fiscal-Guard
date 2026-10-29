@@ -56,6 +56,10 @@ app = FastAPI(title="FiscalGuard API", lifespan=lifespan)
 
 app.state.limiter = limiter
 
+@app.get("/")
+def read_root():
+    return {"status": "healthy", "service": "FiscalGuard API"}
+
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
@@ -72,12 +76,10 @@ origins = [
     for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
     if o.strip()
 ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5174",
-        "http://localhost:5173",
-    ],
+    allow_origins=origins,  # <--- CHANGED THIS: Uses the dynamic list from Render
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -194,7 +196,7 @@ def create_expense(
             models.Expense.category == category,
         )
     ]
-    flagged = ml.is_anomaly(expense.amount, CATEGORY_MAP[category], history)
+    flagged = ml.is_anomaly(float(expense.amount), CATEGORY_MAP[category], history)
 
     db_expense = models.Expense(
         amount_paise=amount_paise,

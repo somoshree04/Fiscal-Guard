@@ -1,4 +1,3 @@
-
 from sqlalchemy import (
     BigInteger,  # Added for amount_paise
     Boolean,
@@ -20,31 +19,36 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(30), unique=True, index=True,nullable=False)
-    email = Column(String(255), unique=True, index=True,nullable=False)
-    hashed_password = Column(String(255),nullable=False)
+    username = Column(String(30), unique=True, index=True, nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
 
-    expenses = relationship("Expense", back_populates="owner", cascade="all, delete-orphan")
+    expenses = relationship(
+        "Expense", back_populates="owner", cascade="all, delete-orphan"
+    )
+
 
 class Expense(Base):
     __tablename__ = "expenses"
     # Serves "all expenses for a user" and "this user's history in a category"
     __table_args__ = (
-    
-    Index("ix_expenses_owner_category", "owner_id", "category"),
-    Index("ix_expenses_owner_timestamp", "owner_id", "timestamp"),
-    # Ensures that a user cannot submit a 0 or negative expense value
-    CheckConstraint("amount_paise > 0", name="ck_expenses_amount_positive"),
-    
+        Index("ix_expenses_owner_category", "owner_id", "category"),
+        Index("ix_expenses_owner_timestamp", "owner_id", "timestamp"),
+        # Ensures that a user cannot submit a 0 or negative expense value
+        CheckConstraint("amount_paise > 0", name="ck_expenses_amount_positive"),
     )
 
     id = Column(Integer, primary_key=True)
-    amount_paise = Column(BigInteger, nullable=False)         
+    amount_paise = Column(BigInteger, nullable=False)
     category = Column(String(30), nullable=False)
     description = Column(String(200), nullable=False, default="")
     is_anomaly = Column(Boolean, nullable=False, default=False)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    timestamp = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    owner_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
 
     owner = relationship("User", back_populates="expenses")
 

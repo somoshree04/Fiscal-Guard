@@ -7,16 +7,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import jwt
-from jwt.exceptions import PyJWTError
-
-
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security.http import HTTPAuthorizationCredentials, HTTPBearer
+from jwt.exceptions import PyJWTError
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
@@ -25,14 +22,18 @@ from sqlalchemy.orm import Session
 from limiter import LOGIN_LIMIT, SIGNUP_LIMIT, limiter
 
 # --- UPDATE THIS LOGIC TO CLEAR THE ERROR ---
-current_dir = os.path.dirname(os.path.abspath(__file__)) # points to backend/
-root_dir = os.path.dirname(current_dir)                 # points to ai-finance-tracker/
+current_dir = os.path.dirname(os.path.abspath(__file__))  # points to backend/
+root_dir = os.path.dirname(current_dir)  # points to ai-finance-tracker/
 
-sys.path.append(current_dir)   # Let's Python find sibling backend files (models, database, security)
-sys.path.append(root_dir)      # Let's Python find root directory folders (ml_logic)
+sys.path.append(
+    current_dir
+)  # Let's Python find sibling backend files (models, database, security)
+sys.path.append(root_dir)  # Let's Python find root directory folders (ml_logic)
 # ---------------------------------------------
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 log = logging.getLogger("fiscalguard")
 
 
@@ -47,7 +48,7 @@ import security
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    ml.load_model()          # fail loudly at startup if the model is missing
+    ml.load_model()  # fail loudly at startup if the model is missing
     yield
 
 
@@ -65,13 +66,17 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         headers={"Retry-After": "60"},
     )
 
-origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+
+origins = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5174",
         "http://localhost:5173",
-        
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -80,17 +85,20 @@ app.add_middleware(
 
 bearer = HTTPBearer(auto_error=False)
 
+
 @app.get("/health")
 def health(db: Session = Depends(database.get_db)):
     db.execute(text("SELECT 1"))
     log.info("Health check passed")
     return {"status": "ok"}
 
+
 def _to_utc(dt: datetime) -> datetime:
     """Naive datetimes are treated as UTC; aware ones are converted to UTC."""
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
 
 def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(bearer),
@@ -116,11 +124,19 @@ def get_current_user(
 # ---------- auth ----------
 @app.post("/auth/signup", response_model=schemas.User, status_code=201)
 @limiter.limit(SIGNUP_LIMIT)
-def signup(request: Request, payload: schemas.UserCreate, db: Session = Depends(database.get_db)):
+def signup(
+    request: Request,
+    payload: schemas.UserCreate,
+    db: Session = Depends(database.get_db),
+):
     email = payload.email.lower()
-    taken = db.query(models.User).filter(
-        (models.User.email == email) | (models.User.username == payload.username)
-    ).first()
+    taken = (
+        db.query(models.User)
+        .filter(
+            (models.User.email == email) | (models.User.username == payload.username)
+        )
+        .first()
+    )
     if taken:
         raise HTTPException(409, "Username or email already registered")
 
@@ -136,7 +152,7 @@ def signup(request: Request, payload: schemas.UserCreate, db: Session = Depends(
         db.rollback()
         raise HTTPException(409, "Username or email already registered")
     db.refresh(user)
-    
+
     # 🌟 Added metrics logging for signup
     log.info(f"user signed up id={user.id}")
     return user
@@ -144,8 +160,12 @@ def signup(request: Request, payload: schemas.UserCreate, db: Session = Depends(
 
 @app.post("/auth/login", response_model=schemas.Token)
 @limiter.limit(LOGIN_LIMIT)
-def login(request:Request,payload: schemas.UserLogin, db: Session = Depends(database.get_db)):
-    user = db.query(models.User).filter(models.User.email == payload.email.lower()).first()
+def login(
+    request: Request, payload: schemas.UserLogin, db: Session = Depends(database.get_db)
+):
+    user = (
+        db.query(models.User).filter(models.User.email == payload.email.lower()).first()
+    )
     if not user or not security.verify_password(payload.password, user.hashed_password):
         # 🌟 Added warning logging before throwing unauthorized error
         log.warning(f"failed login for email={payload.email.lower()}")
@@ -166,9 +186,10 @@ def create_expense(
     db: Session = Depends(database.get_db),
 ):
     category = expense.category.value
-    amount_paise = int(expense.amount * 100)     # exact: Decimal * 100 has no float error
+    amount_paise = int(expense.amount * 100)  # exact: Decimal * 100 has no float error
     history = [
-        paise / 100 for (paise,) in db.query(models.Expense.amount_paise).filter(
+        paise / 100
+        for (paise,) in db.query(models.Expense.amount_paise).filter(
             models.Expense.owner_id == user.id,
             models.Expense.category == category,
         )
@@ -185,7 +206,7 @@ def create_expense(
     db.add(db_expense)
     db.commit()
     db.refresh(db_expense)
-    
+
     # Added audit metric tracking logging to satisfy all string assertions
     log.info(f"expense created user={user.id} category={category} anomaly={flagged}")
     return db_expense
@@ -221,6 +242,7 @@ def list_expenses(
     )
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
+
 @app.get("/me/summary", response_model=schemas.Summary)
 def summary(
     start: datetime,
@@ -254,6 +276,7 @@ def summary(
         ],
     }
 
+
 @app.delete("/me/expenses/{expense_id}", status_code=204)
 def delete_expense(
     expense_id: int,
@@ -266,9 +289,12 @@ def delete_expense(
         .first()
     )
     if not expense:
-        raise HTTPException(404, "Expense not found")   # same answer for "not yours" and "doesn't exist"
+        raise HTTPException(
+            404, "Expense not found"
+        )  # same answer for "not yours" and "doesn't exist"
     db.delete(expense)
     db.commit()
+
 
 @app.patch("/me/expenses/{expense_id}", response_model=schemas.Expense)
 def update_expense(
@@ -309,15 +335,17 @@ def update_expense(
                 models.Expense.id != expense.id,
             )
         ]
-        
+
         # Pull explicitly from amount_paise converted back to standard float dollars/rupees
         current_amount_float = float(expense.amount_paise) / 100
-        
+
         expense.is_anomaly = ml.is_anomaly(
             current_amount_float, CATEGORY_MAP[expense.category], history
         )
 
     db.commit()
     db.refresh(expense)
-    log.info("expense updated id=%s user=%s fields=%s", expense.id, user.id, sorted(changes))
+    log.info(
+        "expense updated id=%s user=%s fields=%s", expense.id, user.id, sorted(changes)
+    )
     return expense

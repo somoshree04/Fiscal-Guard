@@ -21,6 +21,7 @@ def _limiter_off():
     yield
     limiter.enabled = False
 
+
 @pytest.fixture()
 def client():
     engine = create_engine(
@@ -38,14 +39,17 @@ def client():
 
     app.dependency_overrides[database.get_db] = override_get_db
     with TestClient(app) as tc:
-         yield tc
-          # no `with`: skips the lifespan (real DB / model load)
+        yield tc
+        # no `with`: skips the lifespan (real DB / model load)
     app.dependency_overrides.clear()
 
 
-
-def signup_and_login(client, name="alice", email="alice@example.com", password="password123"):
-    r = client.post("/auth/signup", json={"username": name, "email": email, "password": password})
+def signup_and_login(
+    client, name="alice", email="alice@example.com", password="password123"
+):
+    r = client.post(
+        "/auth/signup", json={"username": name, "email": email, "password": password}
+    )
     assert r.status_code == 201, r.text
     r = client.post("/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text

@@ -1,4 +1,3 @@
-
 import numpy as np
 import pandas as pd
 from ml_logic.model import fit_models, personal_flag
@@ -12,7 +11,7 @@ def test_personal_flag_catches_spike_and_ignores_normal():
 
 def test_personal_flag_ignores_low_spend():
     history = [100, 110, 95, 105, 98, 102, 108, 99, 101, 104]
-    assert personal_flag(5, history) is False     # we only flag unusually HIGH spend
+    assert personal_flag(5, history) is False  # we only flag unusually HIGH spend
 
 
 def test_fit_models_skips_small_categories():

@@ -5,6 +5,7 @@ Revises: 6e67c8e07b16
 Create Date: 2026-10-28 05:38:51.438726
 
 """
+
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -12,8 +13,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'd88a1b7651b9'
-down_revision: str | None = '6e67c8e07b16'
+revision: str = "d88a1b7651b9"
+down_revision: str | None = "6e67c8e07b16"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -25,7 +26,9 @@ def upgrade() -> None:
     op.execute("UPDATE expenses SET amount_paise = ROUND(amount * 100)::bigint")
     # 3. now every row has a value, so enforce it
     op.alter_column("expenses", "amount_paise", nullable=False)
-    op.create_check_constraint("ck_expenses_amount_positive", "expenses", "amount_paise > 0")
+    op.create_check_constraint(
+        "ck_expenses_amount_positive", "expenses", "amount_paise > 0"
+    )
     # 4. remove the old float column
     op.drop_column("expenses", "amount")
 

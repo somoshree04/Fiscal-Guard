@@ -47,7 +47,7 @@ class Expense(BaseModel):
 class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=30)
     email: EmailStr
-    password: str = Field(min_length=8, max_length=72)   # bcrypt's limit
+    password: str = Field(min_length=8, max_length=72)  # bcrypt's limit
 
 
 class UserLogin(BaseModel):
@@ -67,9 +67,10 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+
 class ExpensePage(BaseModel):
     items: list[Expense]
-    total: int          # matches the filters, ignoring limit/offset
+    total: int  # matches the filters, ignoring limit/offset
     limit: int
     offset: int
 
@@ -84,7 +85,10 @@ class Summary(BaseModel):
     count: int
     by_category: list[CategoryTotal]
 
+
 class ExpenseUpdate(BaseModel):
-    amount: Decimal | None = Field(default=None, gt=0, lt=10_000_000, max_digits=10, decimal_places=2)
+    amount: Decimal | None = Field(
+        default=None, gt=0, lt=10_000_000, max_digits=10, decimal_places=2
+    )
     category: Category | None = None
     description: str | None = Field(default=None, max_length=200)

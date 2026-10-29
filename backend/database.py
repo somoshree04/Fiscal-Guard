@@ -6,11 +6,12 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 DEFAULT_URL = f"sqlite:///{Path(__file__).resolve().parent / 'finance.db'}"
 
+
 def _normalize(url: str) -> str:
     if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+        url = "postgresql://" + url[len("postgres://") :]
     if url.startswith("postgresql://"):
-        url = "postgresql+psycopg://" + url[len("postgresql://"):]
+        url = "postgresql+psycopg://" + url[len("postgresql://") :]
     return url
 
 
@@ -23,14 +24,17 @@ engine = create_engine(
 )
 
 if IS_SQLITE:
+
     @event.listens_for(engine, "connect")
     def _enable_foreign_keys(dbapi_conn, _):
         cur = dbapi_conn.cursor()
         cur.execute("PRAGMA foreign_keys=ON")
         cur.close()
 
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 def get_db():
     db = SessionLocal()

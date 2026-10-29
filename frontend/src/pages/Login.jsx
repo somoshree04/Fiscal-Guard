@@ -46,13 +46,16 @@ function Login() {
             </p>
           )}
           
-          {/* Email Field */}
+            {/* Email Field */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Email Address</label>
+            <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
+              Email Address
+            </label>
             <input 
+              id="email"
               type="email" 
               value={email}
-              onChange={(e)=> setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="name@company.com"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-all"
             />
@@ -60,16 +63,19 @@ function Login() {
 
           {/* Password Field */}
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+            <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
+              Password
+            </label>
             <input 
+              id="password"
               type="password" 
               value={password}
-              onChange={(e)=>setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-all"
             />
           </div>
-
+          
           {/* Submit Button */}
           <button 
             type="submit" 
